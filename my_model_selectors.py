@@ -76,8 +76,28 @@ class SelectorBIC(ModelSelector):
         """
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on BIC scores
-        raise NotImplementedError
+        lowest_bic = float('inf')
+        best_model = None
+        number_of_features = len(self.X[0])
+        number_of_datapoints = len(self.X)
+
+        try:
+            for n_components in range(self.min_n_components, self.max_n_components + 1):
+
+                model = self.base_model(n_components)
+                logL = model.score(self.X, self.lengths)
+                free_parameters = n_components ** 2 + 2 * number_of_features * n_components - 1
+                bic = -2 * logL + free_parameters * np.log(number_of_datapoints)
+
+                if bic < lowest_bic:
+                    lowest_bic = bic
+                    best_model = model
+
+            return best_model
+
+        except:
+            if best_model:
+                return best_model
 
 
 class SelectorDIC(ModelSelector):
@@ -92,8 +112,37 @@ class SelectorDIC(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection based on DIC scores
-        raise NotImplementedError
+        highest_dic = float('-inf')
+        best_model = None
+
+        m = len(self.words)
+
+        try:
+            for n_components in range(self.min_n_components, self.max_n_components + 1):
+
+                model = self.base_model(n_components)
+                logL = model.score(self.X, self.lengths)
+
+                sum_other_words_logL = 0.
+
+                for other_word in self.hwords.keys():
+                    if other_word != self.this_word:
+                        other_word_x, other_word_length = self.hwords[other_word]
+                        other_word_logL = model.score(other_word_x, other_word_length)
+                        sum_other_words_logL += other_word_logL
+
+                dic = logL - 1/(m - 1) * sum_other_words_logL
+
+                if dic > highest_dic:
+                    highest_dic = dic
+                    best_model = model
+
+            return best_model
+
+        except:
+            if best_model:
+                return best_model
+
 
 
 class SelectorCV(ModelSelector):
@@ -104,5 +153,29 @@ class SelectorCV(ModelSelector):
     def select(self):
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        # TODO implement model selection using CV
-        raise NotImplementedError
+        split_method = KFold(n_splits=2,shuffle=True)
+        highest_logL = float('-inf')
+        best_model = None
+
+        try:
+            for n_components in range(self.min_n_components, self.max_n_components + 1):
+
+                for cv_train_idx, cv_test_idx in split_method.split(self.sequences):
+
+                    x_train, lengths_train = combine_sequences(cv_train_idx, self.sequences)
+
+                    model = GaussianHMM(n_components=n_components, covariance_type="diag", n_iter=1000,
+                                        random_state=self.random_state, verbose=False).fit(x_train, lengths_train)
+
+                    x_test, lengths_test = combine_sequences(cv_test_idx, self.sequences)
+                    logL = model.score(x_test, lengths_test)
+
+                    if logL > highest_logL:
+                        highest_logL = logL
+                        best_model = model
+
+            return best_model
+
+        except:
+            if best_model:
+                return best_model
